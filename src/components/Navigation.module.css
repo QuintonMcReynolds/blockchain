@@ -1,0 +1,36 @@
+.navigation {
+  grid-column: 3;
+  grid-row: 2;
+  position: absolute;
+  margin-top: -2em;
+  margin-left: 2em;
+}
+
+.buttonNonActive {
+  padding: 0.5em;
+  font-weight: 600;
+  color: rgba(247, 247, 247, 0.726);
+  background-color: #5781cfc0;
+  border: none;
+  width: 11.5em;
+  height: 2em;
+  border-radius: 3em 3em 0 0;
+  margin-right: -1.5em;
+  border: 0.2em solid rgba(37, 66, 99, 0.705);
+  border-bottom: none;
+  z-index: 0;
+  position: relative;
+  cursor: pointer;
+}
+
+.buttonNonActive:hover {
+  background-color: #5781cfd7;
+  color: rgb(247, 247, 247);
+}
+
+.buttonActive:focus {
+  outline: none;
+}
+.buttonNonActive:focus {
+  outline: none;
+}
