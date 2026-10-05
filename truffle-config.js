@@ -37,7 +37,7 @@ module.exports = {
       provider: sepoliaProvider,
       network_id: 11155111,
       gas: 4500000,
-      gasPrice: 20000000000,
+      gasPrice: 5000000000, // 5 gwei
       timeoutBlocks: 200,
       skipDryRun: true,
     },
