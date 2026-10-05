@@ -14,14 +14,15 @@ const readSecret = (file) =>
 
 const sepoliaProvider = () => {
   const mnemonic = readSecret('.secret');
-  const infuraKey = readSecret('.infuraKey');
-  if (!mnemonic || !infuraKey) {
-    throw new Error('Sepolia deploy needs .secret (mnemonic) and .infuraKey');
+  if (!mnemonic) {
+    throw new Error('Sepolia deploy needs .secret (deployer mnemonic)');
   }
-  return new HDWalletProvider(
-    mnemonic,
-    `https://sepolia.infura.io/v3/${infuraKey}`
-  );
+  // Infura if a key is present, otherwise a free public endpoint
+  const infuraKey = readSecret('.infuraKey');
+  const rpcUrl = infuraKey
+    ? `https://sepolia.infura.io/v3/${infuraKey}`
+    : 'https://ethereum-sepolia-rpc.publicnode.com';
+  return new HDWalletProvider(mnemonic, rpcUrl);
 };
 
 module.exports = {
