@@ -2,14 +2,17 @@ const TestToken = artifacts.require('TestToken');
 const TokenStaking = artifacts.require('TokenStaking');
 
 module.exports = async function(deployer, network, accounts) {
-  //deploying TesToken
   await deployer.deploy(TestToken);
-  //fetching back TestToken address
   const testToken = await TestToken.deployed();
 
-  //transfer 500k TestToken to smart contract for rewards
+  await deployer.deploy(TokenStaking, testToken.address);
+  const tokenStaking = await TokenStaking.deployed();
+
+  // fund the staking contract with 500k TST for rewards and the faucet
   await testToken.transfer(tokenStaking.address, '500000000000000000000000');
 
-  //   sending 1000 TestTokens to User and Creator for test , investor is second address
-  await testToken.transfer(accounts[1], '1000000000000000000000');
+  // local chains have spare accounts; give the second one 1,000 TST to test with
+  if (accounts[1]) {
+    await testToken.transfer(accounts[1], '1000000000000000000000');
+  }
 };
