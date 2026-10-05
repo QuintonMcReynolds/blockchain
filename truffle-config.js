@@ -2,15 +2,18 @@ require('babel-register');
 require('babel-polyfill');
 const HDWalletProvider = require('@truffle/hdwallet-provider');
 const fs = require('fs');
+const path = require('path');
 
 // Secrets live in git-ignored files; only the network being used needs them.
-const readSecret = (file) =>
-  fs.existsSync(file)
+const readSecret = (name) => {
+  const file = path.join(__dirname, name);
+  return fs.existsSync(file)
     ? fs
         .readFileSync(file)
         .toString()
         .trim()
     : '';
+};
 
 const sepoliaProvider = () => {
   const mnemonic = readSecret('.secret');
