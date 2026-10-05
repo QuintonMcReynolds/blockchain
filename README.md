@@ -18,9 +18,9 @@ Local (Ganache on port 7545): `npx truffle migrate --reset`
 
 Sepolia:
 
-1. Create two git-ignored files in the project root:
+1. Create git-ignored files in the project root:
    - `.secret` — the 12-word mnemonic of a deployer wallet funded with Sepolia ETH
-   - `.infuraKey` — an Infura project key
+   - `.infuraKey` (optional) — an Infura key; without it the public PublicNode endpoint is used
 2. `npx truffle migrate --network sepolia --reset`
 
 The new addresses are written to `src/abis/`; commit them so the frontend picks up the network.
