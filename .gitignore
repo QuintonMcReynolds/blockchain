@@ -1,3 +1,11 @@
 # dependencies
 /node_modules
 /package-lock.json
+# deploy secrets
+.secret
+.infuraKey
+.ethKey
+.env
+
+# build output
+/build

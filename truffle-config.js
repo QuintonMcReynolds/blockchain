@@ -2,18 +2,27 @@ require('babel-register');
 require('babel-polyfill');
 const HDWalletProvider = require('@truffle/hdwallet-provider');
 const fs = require('fs');
-const mnemonic = fs
-  .readFileSync('.secret')
-  .toString()
-  .trim();
-const infuraKey = fs
-  .readFileSync('.infuraKey')
-  .toString()
-  .trim();
-const ethKey = fs
-  .readFileSync('.ethKey')
-  .toString()
-  .trim();
+
+// Secrets live in git-ignored files; only the network being used needs them.
+const readSecret = (file) =>
+  fs.existsSync(file)
+    ? fs
+        .readFileSync(file)
+        .toString()
+        .trim()
+    : '';
+
+const sepoliaProvider = () => {
+  const mnemonic = readSecret('.secret');
+  const infuraKey = readSecret('.infuraKey');
+  if (!mnemonic || !infuraKey) {
+    throw new Error('Sepolia deploy needs .secret (mnemonic) and .infuraKey');
+  }
+  return new HDWalletProvider(
+    mnemonic,
+    `https://sepolia.infura.io/v3/${infuraKey}`
+  );
+};
 
 module.exports = {
   networks: {
@@ -23,30 +32,13 @@ module.exports = {
       network_id: '*', // Match any network id
     },
 
-    //ROPSTEN Test net
-    ropsten: {
-      provider: function() {
-        return new HDWalletProvider(
-          mnemonic,
-          `https://ropsten.infura.io/v3/${infuraKey}`
-        );
-      },
-      network_id: 3,
+    sepolia: {
+      provider: sepoliaProvider,
+      network_id: 11155111,
       gas: 4500000,
-      gasPrice: 10000000000,
-    },
-
-    //RINKEBY Test net
-    rinkeby: {
-      provider: function() {
-        return new HDWalletProvider(
-          mnemonic,
-          `https://rinkeby.infura.io/v3/${infuraKey}`
-        );
-      },
-      network_id: 4,
-      gas: 4500000,
-      gasPrice: 10000000000,
+      gasPrice: 20000000000,
+      timeoutBlocks: 200,
+      skipDryRun: true,
     },
   },
 
@@ -54,6 +46,8 @@ module.exports = {
   contracts_build_directory: './src/abis/',
   compilers: {
     solc: {
+      // pinned locally; truffle 5.1 can't reach the current solc download host
+      version: './node_modules/solc',
       optimizer: {
         enabled: true,
         runs: 200,
@@ -64,7 +58,7 @@ module.exports = {
 
   //etherscan API key
   api_keys: {
-    etherscan: ethKey,
+    etherscan: readSecret('.ethKey'),
   },
   // plugin for verification
   plugins: ['truffle-plugin-verify'],
@@ -77,5 +71,5 @@ module.exports = {
 
 // to compile - truffle compile
 // to deploy - truffle migrate --reset
-// to deploy - truffle migrate --network rinkeby --reset
-// to verify - truffle run verify Contract --network rinkeby
+// to deploy - truffle migrate --network sepolia --reset
+// to verify - truffle run verify Contract --network sepolia
