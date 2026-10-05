@@ -1,398 +1,333 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Web3 from 'web3';
 import classes from './App.module.css';
-import TestToken from '../src/abis/TestToken.json';
-import TokenStaking from '../src/abis/TokenStaking.json';
+import TestToken from './abis/TestToken.json';
+import TokenStaking from './abis/TokenStaking.json';
+import Header from './components/Header';
+import PoolTabs from './components/PoolTabs';
 import Staking from './components/Staking';
+import Position from './components/Position';
 import AdminTesting from './components/AdminTesting';
-import Navigation from './components/Navigation';
+import Toast from './components/Toast';
+import { formatToken, errorMessage } from './format';
+
+// Both pools live in one contract; only the method names differ.
+const POOLS = [
+  {
+    key: 'default',
+    label: 'Default pool',
+    stake: 'stakeTokens',
+    unstake: 'unstakeTokens',
+    redistribute: 'redistributeRewards',
+  },
+  {
+    key: 'custom',
+    label: 'Custom pool',
+    stake: 'customStaking',
+    unstake: 'customUnstake',
+    redistribute: 'customRewards',
+  },
+];
+
+const NETWORK_NAMES = {
+  1: 'Ethereum',
+  3: 'Ropsten',
+  4: 'Rinkeby',
+  5: 'Goerli',
+  1337: 'Localhost',
+  5777: 'Ganache',
+  11155111: 'Sepolia',
+};
+
+const networkName = (id, fallback) => NETWORK_NAMES[id] || fallback || `Chain ${id}`;
+
+const SUPPORTED_NETWORKS = Object.keys(TokenStaking.networks)
+  .filter((id) => TestToken.networks[id])
+  .map((id) => `${networkName(id)} (${id})`);
+
+const EMPTY_DATA = {
+  userBalance: '0',
+  contractBalance: '0',
+  totalStaked: ['0', '0'],
+  myStake: ['0', '0'],
+  apy: [0, 0],
+  owner: null,
+};
 
 const App = () => {
-  const [account, setAccount] = useState('Connecting to Metamask..');
-  const [network, setNetwork] = useState({ id: '0', name: 'none' });
-  const [testTokenContract, setTestTokenContract] = useState('');
-  const [tokenStakingContract, setTokenStakingContract] = useState('');
-  const [inputValue, setInputValue] = useState('');
-  const [contractBalance, setContractBalance] = useState('0');
-  const [totalStaked, setTotalStaked] = useState([0, 0]);
-  const [myStake, setMyStake] = useState([0, 0]);
-  const [appStatus, setAppStatus] = useState(true);
-  const [loader, setLoader] = useState(false);
-  const [userBalance, setUserBalance] = useState('0');
-  const [apy, setApy] = useState([0, 0]);
-  const [page, setPage] = useState(1);
+  // checking | missing | disconnected | connected
+  const [wallet, setWallet] = useState('checking');
+  const [account, setAccount] = useState(null);
+  const [network, setNetwork] = useState(null);
+  const [supported, setSupported] = useState(true);
+  const [data, setData] = useState(EMPTY_DATA);
+  const [pool, setPool] = useState(0);
+  const [pending, setPending] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  useEffect(() => {
-    //connecting to ethereum blockchain
-    const ethEnabled = async () => {
-      fetchDataFromBlockchain();
-    };
+  const web3Ref = useRef(null);
+  const contractsRef = useRef({ token: null, staking: null });
 
-    ethEnabled();
+  const showToast = (type, message) => setToast({ type, message, id: Date.now() });
+
+  const loadData = useCallback(async (from) => {
+    const web3 = web3Ref.current;
+    const { token, staking } = contractsRef.current;
+    if (!web3 || !token || !staking || !from) return;
+
+    const toEth = (value) => web3.utils.fromWei(value.toString(), 'ether');
+    const [
+      userBalance,
+      contractBalance,
+      stake,
+      customStake,
+      total,
+      customTotal,
+      defaultAPY,
+      customAPY,
+      owner,
+    ] = await Promise.all([
+      token.methods.balanceOf(from).call(),
+      token.methods.balanceOf(staking._address).call(),
+      staking.methods.stakingBalance(from).call(),
+      staking.methods.customStakingBalance(from).call(),
+      staking.methods.totalStaked().call(),
+      staking.methods.customTotalStaked().call(),
+      staking.methods.defaultAPY().call(),
+      staking.methods.customAPY().call(),
+      staking.methods.owner().call(),
+    ]);
+
+    // Contract stores the daily rate in thousandths of a percent.
+    const toApy = (raw) => (Number(raw) / 1000) * 365;
+
+    setData({
+      userBalance: toEth(userBalance),
+      contractBalance: toEth(contractBalance),
+      totalStaked: [toEth(total), toEth(customTotal)],
+      myStake: [toEth(stake), toEth(customStake)],
+      apy: [toApy(defaultAPY), toApy(customAPY)],
+      owner,
+    });
   }, []);
 
-  const fetchDataFromBlockchain = async () => {
-    if (window.ethereum) {
-      // await window.ethereum.send('eth_requestAccounts');
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      window.web3 = new Web3(window.ethereum);
-
-      //connecting to metamask
-      let web3 = window.web3;
-      const accounts = await web3.eth.getAccounts();
-      setAccount(accounts[0]);
-
-      //loading users network ID and name
-      const networkId = await web3.eth.net.getId();
-      const networkType = await web3.eth.net.getNetworkType();
-      setNetwork({ ...network, id: networkId, name: networkType });
-
-      //loading TestToken contract data
-      const testTokenData = TestToken.networks[networkId];
-      if (testTokenData) {
-        let web3 = window.web3;
-        const testToken = new web3.eth.Contract(
-          TestToken.abi,
-          testTokenData.address
-        );
-        setTestTokenContract(testToken);
-        //  fetching balance of Testtoken and storing in state
-        let testTokenBalance = await testToken.methods
-          .balanceOf(accounts[0])
-          .call();
-        let convertedBalance = window.web3.utils.fromWei(
-          testTokenBalance.toString(),
-          'Ether'
-        );
-        setUserBalance(convertedBalance);
-
-        //fetching contract balance
-        //updating total staked balance
-        const tempBalance = TokenStaking.networks[networkId];
-        let totalStaked = await testToken.methods
-          .balanceOf(tempBalance.address)
-          .call();
-
-        convertedBalance = window.web3.utils.fromWei(
-          totalStaked.toString(),
-          'Ether'
-        );
-        //removing initial balance
-        setContractBalance(convertedBalance);
-      } else {
-        setAppStatus(false);
-        window.alert(
-          'TestToken contract is not deployed on this network, please change to testnet'
-        );
+  const connect = useCallback(
+    async (prompt) => {
+      if (!window.ethereum) {
+        setWallet('missing');
+        return;
       }
 
-      //loading TokenStaking contract data
-      const tokenStakingData = TokenStaking.networks[networkId];
-
-      if (tokenStakingData) {
-        let web3 = window.web3;
-        const tokenStaking = new web3.eth.Contract(
-          TokenStaking.abi,
-          tokenStakingData.address
-        );
-        setTokenStakingContract(tokenStaking);
-        //  fetching total staked TokenStaking  and storing in state
-        let myStake = await tokenStaking.methods
-          .stakingBalance(accounts[0])
-          .call();
-
-        let convertedBalance = window.web3.utils.fromWei(
-          myStake.toString(),
-          'Ether'
-        );
-
-        let myCustomStake = await tokenStaking.methods
-          .customStakingBalance(accounts[0])
-          .call();
-
-        let tempCustomdBalance = window.web3.utils.fromWei(
-          myCustomStake.toString(),
-          'Ether'
-        );
-
-        setMyStake([convertedBalance, tempCustomdBalance]);
-
-        //checking totalStaked
-        let tempTotalStaked = await tokenStaking.methods.totalStaked().call();
-        convertedBalance = window.web3.utils.fromWei(
-          tempTotalStaked.toString(),
-          'Ether'
-        );
-        let tempcustomTotalStaked = await tokenStaking.methods
-          .customTotalStaked()
-          .call();
-        let tempconvertedBalance = window.web3.utils.fromWei(
-          tempcustomTotalStaked.toString(),
-          'Ether'
-        );
-        setTotalStaked([convertedBalance, tempconvertedBalance]);
-
-        //fetching APY values from contract
-        let tempApy =
-          ((await tokenStaking.methods.defaultAPY().call()) / 1000) * 365;
-        let tempcustomApy =
-          ((await tokenStaking.methods.customAPY().call()) / 1000) * 365;
-        setApy([tempApy, tempcustomApy]);
-      } else {
-        setAppStatus(false);
-        window.alert(
-          'TokenStaking contract is not deployed on this network, please change to testnet'
-        );
-      }
-
-      //removing loader
-      setLoader(false);
-    } else if (!window.web3) {
-      setAppStatus(false);
-      setAccount('Metamask is not detected');
-      setLoader(false);
-    }
-  };
-
-  const inputHandler = (received) => {
-    setInputValue(received);
-  };
-
-  const changePage = () => {
-    if (page === 1) {
-      setPage(2);
-    } else if (page === 2) {
-      setPage(1);
-    }
-  };
-
-  const stakeHandler = () => {
-    if (!appStatus) {
-    } else {
-      if (!inputValue || inputValue === '0' || inputValue < 0) {
-        setInputValue('');
-      } else {
-        setLoader(true);
-        let convertToWei = window.web3.utils.toWei(inputValue, 'Ether');
-
-        //aproving tokens for spending
-        testTokenContract.methods
-          .approve(tokenStakingContract._address, convertToWei)
-          .send({ from: account })
-          .on('transactionHash', (hash) => {
-            if (page === 1) {
-              tokenStakingContract.methods
-                .stakeTokens(convertToWei)
-                .send({ from: account })
-                .on('transactionHash', (hash) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                })
-                .on('receipt', (receipt) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                })
-                .on('confirmation', (confirmationNumber, receipt) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                });
-            } else if (page === 2) {
-              tokenStakingContract.methods
-                .customStaking(convertToWei)
-                .send({ from: account })
-                .on('transactionHash', (hash) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                })
-                .on('receipt', (receipt) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                })
-                .on('confirmation', (confirmationNumber, receipt) => {
-                  setLoader(false);
-                  fetchDataFromBlockchain();
-                });
-            }
-          })
-          .on('error', function(error) {
-            setLoader(false);
-            console.log('Error Code:', error.code);
-            console.log(error.message);
-          });
-        setInputValue('');
-      }
-    }
-  };
-
-  const unStakeHandler = () => {
-    if (!appStatus) {
-    } else {
-      setLoader(true);
-
-      // let convertToWei = window.web3.utils.toWei(inputValue, 'Ether')
-      if (page === 1) {
-        tokenStakingContract.methods
-          .unstakeTokens()
-          .send({ from: account })
-          .on('transactionHash', (hash) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-          .on('receipt', (receipt) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-          .on('confirmation', (confirmationNumber, receipt) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-          .on('error', function(error) {
-            console.log('Error Code:', error.code);
-            console.log(error.message);
-            setLoader(false);
-          });
-
-        setInputValue('');
-      } else if (page === 2) {
-        tokenStakingContract.methods
-          .customUnstake()
-          .send({ from: account })
-          .on('transactionHash', (hash) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-          .on('receipt', (receipt) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-          .on('confirmation', (confirmationNumber, receipt) => {
-            setLoader(false);
-            fetchDataFromBlockchain();
-          })
-
-          .on('error', function(error) {
-            console.log('Error Code:', error.code);
-            console.log(error.message);
-            setLoader(false);
-          });
-        setInputValue('');
-      }
-    }
-  };
-
-  const redistributeRewards = async () => {
-    if (!appStatus) {
-    } else {
-      setLoader(true);
-      tokenStakingContract.methods
-        .redistributeRewards()
-        .send({ from: account })
-        .on('transactionHash', (hash) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('receipt', (receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('confirmation', (confirmationNumber, receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('error', function(error) {
-          console.log('Error Code:', error.code);
-          console.log(error.code);
-          setLoader(false);
+      try {
+        const accounts = await window.ethereum.request({
+          method: prompt ? 'eth_requestAccounts' : 'eth_accounts',
         });
+        if (!accounts || accounts.length === 0) {
+          setWallet('disconnected');
+          setAccount(null);
+          return;
+        }
+
+        const web3 = new Web3(window.ethereum);
+        web3Ref.current = web3;
+        const from = accounts[0];
+        setAccount(from);
+        setWallet('connected');
+
+        const networkId = await web3.eth.net.getId();
+        const networkType = await web3.eth.net.getNetworkType();
+        setNetwork({ id: networkId, name: networkName(networkId, networkType) });
+
+        const tokenData = TestToken.networks[networkId];
+        const stakingData = TokenStaking.networks[networkId];
+        if (!tokenData || !stakingData) {
+          contractsRef.current = { token: null, staking: null };
+          setSupported(false);
+          setData(EMPTY_DATA);
+          return;
+        }
+
+        contractsRef.current = {
+          token: new web3.eth.Contract(TestToken.abi, tokenData.address),
+          staking: new web3.eth.Contract(TokenStaking.abi, stakingData.address),
+        };
+        setSupported(true);
+        await loadData(from);
+      } catch (error) {
+        if (error.code === 4001) {
+          setWallet('disconnected');
+        } else {
+          showToast('error', errorMessage(error));
+        }
+      }
+    },
+    [loadData]
+  );
+
+  useEffect(() => {
+    connect(false);
+
+    if (!window.ethereum || !window.ethereum.on) return undefined;
+    const onAccounts = () => connect(false);
+    const onChain = () => window.location.reload();
+    window.ethereum.on('accountsChanged', onAccounts);
+    window.ethereum.on('chainChanged', onChain);
+    return () => {
+      if (window.ethereum.removeListener) {
+        window.ethereum.removeListener('accountsChanged', onAccounts);
+        window.ethereum.removeListener('chainChanged', onChain);
+      }
+    };
+  }, [connect]);
+
+  // Runs one or more wallet transactions in order, waiting for each receipt.
+  const runTx = async (steps, successMessage) => {
+    try {
+      for (const step of steps) {
+        setPending(step.label);
+        await step.send();
+      }
+      showToast('success', successMessage);
+      return true;
+    } catch (error) {
+      showToast('error', errorMessage(error));
+      return false;
+    } finally {
+      setPending(null);
+      loadData(account).catch(() => {});
     }
   };
 
-  const redistributeCustomRewards = async () => {
-    if (!appStatus) {
-    } else {
-      setLoader(true);
-      tokenStakingContract.methods
-        .customRewards()
-        .send({ from: account })
-        .on('transactionHash', (hash) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('receipt', (receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('confirmation', (confirmationNumber, receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('error', function(error) {
-          console.log('Error Code:', error.code);
-          console.log(error.code);
-          setLoader(false);
-        });
-    }
+  const ready = wallet === 'connected' && supported && !pending;
+  const { token, staking } = contractsRef.current;
+  const activePool = POOLS[pool];
+
+  const stake = (amount) => {
+    const wei = web3Ref.current.utils.toWei(amount, 'ether');
+    return runTx(
+      [
+        {
+          label: 'Approving…',
+          send: () =>
+            token.methods.approve(staking._address, wei).send({ from: account }),
+        },
+        {
+          label: 'Staking…',
+          send: () => staking.methods[activePool.stake](wei).send({ from: account }),
+        },
+      ],
+      `Staked ${formatToken(amount)} TST in the ${activePool.label.toLowerCase()}`
+    );
   };
 
-  const claimTst = async () => {
-    if (!appStatus) {
-    } else {
-      setLoader(true);
-      tokenStakingContract.methods
-        .claimTst()
-        .send({ from: account })
-        .on('transactionHash', (hash) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('receipt', (receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('confirmation', (confirmationNumber, receipt) => {
-          setLoader(false);
-          fetchDataFromBlockchain();
-        })
-        .on('error', function(error) {
-          console.log('Error Code:', error.code);
-          console.log(error.code);
-          setLoader(false);
-        });
-    }
-  };
+  const unstake = () =>
+    runTx(
+      [
+        {
+          label: 'Unstaking…',
+          send: () => staking.methods[activePool.unstake]().send({ from: account }),
+        },
+      ],
+      `Unstaked ${formatToken(data.myStake[pool])} TST`
+    );
+
+  const claim = () =>
+    runTx(
+      [{ label: 'Claiming…', send: () => staking.methods.claimTst().send({ from: account }) }],
+      'Claimed 1,000 TST'
+    );
+
+  const redistribute = () =>
+    runTx(
+      [
+        {
+          label: 'Distributing…',
+          send: () => staking.methods[activePool.redistribute]().send({ from: account }),
+        },
+      ],
+      'Rewards distributed to stakers'
+    );
+
+  const isOwner =
+    !!account && !!data.owner && account.toLowerCase() === data.owner.toLowerCase();
 
   return (
-    <div className={classes.Grid}>
-      {loader ? <div className={classes.curtain}></div> : null}
-      <div className={classes.loader}></div>
-      <div className={classes.Child}>
-        <Navigation apy={apy} changePage={changePage} />
-        <div>
-          <Staking
-            account={account}
-            totalStaked={page === 1 ? totalStaked[0] : totalStaked[1]}
-            myStake={page === 1 ? myStake[0] : myStake[1]}
-            userBalance={userBalance}
-            unStakeHandler={unStakeHandler}
-            stakeHandler={stakeHandler}
-            inputHandler={inputHandler}
-            apy={page === 1 ? apy[0] : apy[1]}
-            page={page}
-          />
+    <div className={classes.shell}>
+      <Header
+        wallet={wallet}
+        account={account}
+        network={network}
+        supported={supported}
+        onConnect={() => connect(true)}
+      />
+
+      <section className={classes.hero}>
+        <h1>Stake TST, earn daily yield</h1>
+        <p>
+          Lock TestToken into a pool and receive rewards every distribution.
+          Unstake whenever you like.
+        </p>
+      </section>
+
+      {wallet === 'missing' && (
+        <div className={classes.banner}>
+          <span>No Ethereum wallet detected. Install MetaMask to use this app.</span>
+          <a
+            className={classes.bannerButton}
+            href="https://metamask.io/download/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Get MetaMask
+          </a>
         </div>
-        <div className={classes.for_testing}>
-          <AdminTesting
-            network={network}
-            tokenStakingContract={tokenStakingContract}
-            contractBalance={contractBalance}
-            redistributeRewards={
-              page === 1 ? redistributeRewards : redistributeCustomRewards
-            }
-            claimTst={claimTst}
-            page={page}
-          />
+      )}
+
+      {wallet === 'connected' && !supported && (
+        <div className={classes.banner}>
+          <span>
+            The staking contracts aren't deployed on {network && network.name}. Switch
+            your wallet to {SUPPORTED_NETWORKS.join(', ')}.
+          </span>
         </div>
+      )}
+
+      <PoolTabs pools={POOLS} apy={data.apy} active={pool} onChange={setPool} />
+
+      <div className={classes.grid}>
+        <Staking
+          key={activePool.key}
+          poolLabel={activePool.label}
+          apy={data.apy[pool]}
+          userBalance={data.userBalance}
+          myStake={data.myStake[pool]}
+          ready={ready}
+          pending={pending}
+          wallet={wallet}
+          onConnect={() => connect(true)}
+          onStake={stake}
+          onUnstake={unstake}
+        />
+        <Position
+          myStake={data.myStake[pool]}
+          apy={data.apy[pool]}
+          userBalance={data.userBalance}
+          poolTotal={data.totalStaked[pool]}
+        />
       </div>
+
+      <AdminTesting
+        network={network}
+        stakingAddress={staking ? staking._address : null}
+        contractBalance={data.contractBalance}
+        poolLabel={activePool.label}
+        isOwner={isOwner}
+        ready={ready}
+        onClaim={claim}
+        onRedistribute={redistribute}
+      />
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 };

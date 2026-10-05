@@ -1,0 +1,96 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.logo {
+  width: 28px;
+  height: 28px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.network,
+.account,
+.connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.network {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.ok {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.warn {
+  background: var(--warning);
+}
+
+.account {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  cursor: pointer;
+}
+
+.account:hover {
+  border-color: var(--accent);
+}
+
+.connect {
+  border: none;
+  background: var(--accent-strong);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.connect:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.connect:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 480px) {
+  .network {
+    display: none;
+  }
+}

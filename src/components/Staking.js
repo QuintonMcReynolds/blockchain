@@ -1,76 +1,103 @@
 import React, { useState } from 'react';
+import card from './Card.module.css';
 import classes from './Staking.module.css';
-import stakeIcon from '../assets/stake.png';
-import unstakeIcon from '../assets/unstake.png';
-import icon from '../assets/icon.png';
+import { formatToken } from '../format';
 
-const Staking = (props) => {
-  const [inputValue, setInputValue] = useState('');
+const Staking = ({
+  poolLabel,
+  apy,
+  userBalance,
+  myStake,
+  ready,
+  pending,
+  wallet,
+  onConnect,
+  onStake,
+  onUnstake,
+}) => {
+  const [amount, setAmount] = useState('');
 
-  const inputChangeHandler = (event) => {
+  const value = Number(amount);
+  const overBalance = value > Number(userBalance);
+  const canStake = ready && amount !== '' && value > 0 && !overBalance;
+  const canUnstake = ready && Number(myStake) > 0;
+
+  const submit = async (event) => {
     event.preventDefault();
-    setInputValue(event.target.value);
-    props.inputHandler(event.target.value);
+    if (!canStake) return;
+    const ok = await onStake(amount);
+    if (ok) setAmount('');
   };
 
-  const goMax = () => {
-    setInputValue(props.userBalance);
-    props.inputHandler(props.userBalance);
-  };
+  let hint = `${formatToken(apy / 365, 3)}% daily · rewards paid in TST`;
+  if (overBalance) hint = 'Amount exceeds your wallet balance';
 
   return (
-    <div className={classes.Staking}>
-      <img src={icon} alt="logo" className={classes.icon} />
-      <h1> Yield Farming / Token Staking dApp</h1>
-      <p>{props.account}</p>
-      <h3>
-        {props.apy}% (APY) - {props.apy / 365}% Daily Earnings
-      </h3>
-      <div className={classes.inputDiv}>
+    <form className={card.card} onSubmit={submit}>
+      <div className={classes.head}>
+        <h2 className={card.title}>Stake · {poolLabel}</h2>
+        <button
+          type="button"
+          className={classes.balance}
+          onClick={() => setAmount(userBalance)}
+          disabled={!ready || Number(userBalance) === 0}
+        >
+          Balance {formatToken(userBalance)} <strong>MAX</strong>
+        </button>
+      </div>
+
+      <label
+        className={`${classes.field} ${overBalance ? classes.fieldError : ''}`}
+      >
         <input
           className={classes.input}
           type="number"
+          inputMode="decimal"
           min="0"
-          step="1"
-          onChange={inputChangeHandler}
-          value={inputValue}
-        ></input>
-      </div>
-      <button
-        className={classes.stakeButton}
-        onClick={() => {
-          props.stakeHandler();
-          setInputValue('');
-        }}
-      >
-        <img src={stakeIcon} alt="stake icon" className={classes.stakeIcon} />
-        <p>Stake</p>
-      </button>
-      &nbsp; &nbsp;
-      <button className={classes.unstakeButton} onClick={props.unStakeHandler}>
-        <img
-          src={unstakeIcon}
-          alt="unstake icon"
-          className={classes.stakeIcon}
+          step="any"
+          placeholder="0.0"
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          aria-label="Amount to stake"
         />
-        <p>Unstake All</p>
-      </button>
-      <div className={classes.totals}>
-        <h4>
-          Total Staked (by all users): {props.totalStaked} TestToken (Tst)
-        </h4>
-        <div>&nbsp;</div>
-        <h5>My Stake: {props.myStake} TestToken (Tst) </h5>
-        <h5>
-          My Estimated Reward:{' '}
-          {((props.myStake * props.apy) / 36500).toFixed(3)} TestToken (Tst)
-        </h5>
-        <h5 onClick={goMax} className={classes.goMax}>
-          My balance: {props.userBalance} TestToken (Tst)
-        </h5>
-      </div>
-    </div>
+        <span className={classes.token}>TST</span>
+      </label>
+
+      <p className={`${classes.hint} ${overBalance ? classes.hintError : ''}`}>
+        {hint}
+      </p>
+
+      {wallet === 'connected' ? (
+        <div className={classes.buttons}>
+          <button
+            type="submit"
+            className={`${card.button} ${card.primary}`}
+            disabled={!canStake}
+          >
+            {pending ? <span className={card.spinner} /> : null}
+            {pending || 'Stake'}
+          </button>
+          <button
+            type="button"
+            className={`${card.button} ${card.secondary}`}
+            onClick={onUnstake}
+            disabled={!canUnstake}
+          >
+            Unstake all
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`${card.button} ${card.primary} ${classes.full}`}
+          onClick={onConnect}
+          disabled={wallet !== 'disconnected'}
+        >
+          Connect wallet to stake
+        </button>
+      )}
+    </form>
   );
 };
-//My balance: 504304.394968082 TestToken (Tst)
+
 export default Staking;
